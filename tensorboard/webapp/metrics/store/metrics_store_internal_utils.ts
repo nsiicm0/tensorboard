@@ -19,9 +19,13 @@ limitations under the License.
 import {DataLoadState} from '../../types/data';
 
 import {isSampledPlugin, PluginType, SampledPluginType} from '../data_source';
-import {CardId, CardMetadata} from '../types';
+import {CardId, CardMetadata, NonPinnedCardId} from '../types';
 
 import {
+  CardMetadataMap,
+  CardStepIndexMap,
+  CardToPinnedCard,
+  PinnedCardToCard,
   RunToLoadState,
   TagMetadata,
   TimeSeriesData,
@@ -152,4 +156,35 @@ export function getRunIds(
   }
   const tagToRunIds = tagMetadata[plugin].tagToRuns;
   return tagToRunIds.hasOwnProperty(tag) ? tagToRunIds[tag] : [];
+}
+
+/**
+ * Impure helper to modify the state by creating a new pinned copy of the
+ * provided card. May throw if the card provided has no metadata.
+ */
+export function addPinnedCopyToState(
+  cardId: NonPinnedCardId,
+  nextCardToPinnedCopy: CardToPinnedCard,
+  nextPinnedCardToOriginal: PinnedCardToCard,
+  nextCardStepIndexMap: CardStepIndexMap,
+  nextCardMetadataMap: CardMetadataMap
+) {
+  // No-op if the card already has a pinned copy.
+  if (nextCardToPinnedCopy.has(cardId)) {
+    return;
+  }
+
+  // Create a pinned copy. Copies step index from the original card.
+  const pinnedCardId = getPinnedCardId(cardId);
+  nextCardToPinnedCopy.set(cardId, pinnedCardId);
+  nextPinnedCardToOriginal.set(pinnedCardId, cardId);
+  if (nextCardStepIndexMap.hasOwnProperty(cardId)) {
+    nextCardStepIndexMap[pinnedCardId] = nextCardStepIndexMap[cardId];
+  }
+
+  const metadata = nextCardMetadataMap[cardId];
+  if (!metadata) {
+    throw new Error('Cannot pin a card without metadata');
+  }
+  nextCardMetadataMap[pinnedCardId] = metadata;
 }

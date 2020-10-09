@@ -23,7 +23,9 @@ import {DataLoadState} from '../../types/data';
 import {TBHttpClientTestingModule} from '../../webapp_data_source/tb_http_client_testing';
 import {of, Subject} from 'rxjs';
 
+import * as routingActions from '../../app_routing/actions';
 import {buildNavigatedAction} from '../../app_routing/testing';
+import {RouteKind} from '../../app_routing/types';
 import {State} from '../../app_state';
 import * as selectors from '../../selectors';
 import * as actions from '../actions';
@@ -113,6 +115,12 @@ describe('metrics effects', () => {
       store.overrideSelector(getActivePlugin, METRICS_PLUGIN_ID);
       store.refreshState();
       actions$.next(TEST_ONLY.initAction());
+      actions$.next(
+        routingActions.stateRehydratedFromUrl({
+          routeKind: RouteKind.EXPERIMENT,
+          partialState: {metrics: {pinnedCards: []}},
+        })
+      );
 
       expect(fetchTagMetadataSpy).not.toHaveBeenCalled();
       expect(actualActions).toEqual([]);
@@ -148,6 +156,12 @@ describe('metrics effects', () => {
       // Assume activePlugin's initial bootstrap occurs by the time we init.
       store.overrideSelector(getActivePlugin, METRICS_PLUGIN_ID);
       store.refreshState();
+      actions$.next(
+        routingActions.stateRehydratedFromUrl({
+          routeKind: RouteKind.EXPERIMENT,
+          partialState: {metrics: {pinnedCards: []}},
+        })
+      );
       actions$.next(coreActions.changePlugin({plugin: METRICS_PLUGIN_ID}));
 
       fetchTagMetadataSubject.next(buildDataSourceTagMetadata());
@@ -161,11 +175,84 @@ describe('metrics effects', () => {
       ]);
     });
 
+    it('does not load if URL rehydration did not occur', () => {
+      store.overrideSelector(selectors.getExperimentIdsFromRoute, ['exp1']);
+      store.overrideSelector(
+        getMetricsTagMetadataLoaded,
+        DataLoadState.NOT_LOADED
+      );
+      store.overrideSelector(getActivePlugin, null);
+      store.refreshState();
+
+      expect(fetchTagMetadataSpy).not.toHaveBeenCalled();
+      expect(actualActions).toEqual([]);
+
+      // Assume activePlugin's initial bootstrap occurs by the time we init.
+      store.overrideSelector(getActivePlugin, METRICS_PLUGIN_ID);
+      store.refreshState();
+      actions$.next(coreActions.changePlugin({plugin: METRICS_PLUGIN_ID}));
+
+      fetchTagMetadataSubject.next(buildDataSourceTagMetadata());
+
+      expect(fetchTagMetadataSpy).toHaveBeenCalled();
+      expect(actualActions).toEqual([actions.metricsTagMetadataRequested()]);
+    });
+
+    it('does not load 2x if URL rehydration occurs multiple times', () => {
+      store.overrideSelector(selectors.getExperimentIdsFromRoute, ['exp1']);
+      store.overrideSelector(
+        getMetricsTagMetadataLoaded,
+        DataLoadState.NOT_LOADED
+      );
+      store.overrideSelector(getActivePlugin, null);
+      store.refreshState();
+
+      expect(fetchTagMetadataSpy).not.toHaveBeenCalled();
+      expect(actualActions).toEqual([]);
+
+      // Assume activePlugin's initial bootstrap occurs by the time we init.
+      store.overrideSelector(getActivePlugin, METRICS_PLUGIN_ID);
+      store.refreshState();
+
+      // 2x rehydrations.
+      actions$.next(
+        routingActions.stateRehydratedFromUrl({
+          routeKind: RouteKind.EXPERIMENT,
+          partialState: {metrics: {pinnedCards: []}},
+        })
+      );
+      actions$.next(
+        routingActions.stateRehydratedFromUrl({
+          routeKind: RouteKind.EXPERIMENT,
+          partialState: {metrics: {pinnedCards: []}},
+        })
+      );
+      actions$.next(coreActions.changePlugin({plugin: METRICS_PLUGIN_ID}));
+
+      fetchTagMetadataSubject.next(buildDataSourceTagMetadata());
+
+      expect(fetchTagMetadataSpy).toHaveBeenCalled();
+      expect(actualActions).toEqual([
+        actions.metricsTagMetadataRequested(),
+
+        // Metadta loads only 1x.
+        actions.metricsTagMetadataLoaded({
+          tagMetadata: buildDataSourceTagMetadata(),
+        }),
+      ]);
+    });
+
     it('does not fetch TagMetadata if data was loaded when opening', () => {
       store.overrideSelector(getMetricsTagMetadataLoaded, DataLoadState.LOADED);
       store.overrideSelector(getActivePlugin, METRICS_PLUGIN_ID);
       store.refreshState();
       actions$.next(TEST_ONLY.initAction());
+      actions$.next(
+        routingActions.stateRehydratedFromUrl({
+          routeKind: RouteKind.EXPERIMENT,
+          partialState: {metrics: {pinnedCards: []}},
+        })
+      );
 
       fetchTagMetadataSubject.next(buildDataSourceTagMetadata());
 
@@ -181,6 +268,12 @@ describe('metrics effects', () => {
       store.overrideSelector(getActivePlugin, METRICS_PLUGIN_ID);
       store.refreshState();
       actions$.next(TEST_ONLY.initAction());
+      actions$.next(
+        routingActions.stateRehydratedFromUrl({
+          routeKind: RouteKind.EXPERIMENT,
+          partialState: {metrics: {pinnedCards: []}},
+        })
+      );
 
       fetchTagMetadataSubject.next(buildDataSourceTagMetadata());
 
@@ -201,6 +294,14 @@ describe('metrics effects', () => {
       ).and.returnValue(of(buildDataSourceTagMetadata()));
       fetchTimeSeriesSpy = spyOn(dataSource, 'fetchTimeSeries');
       selectSpy = spyOn(store, 'select').and.callThrough();
+
+      // Send the initial URL rehydration to unblock tag metadata loading.
+      actions$.next(
+        routingActions.stateRehydratedFromUrl({
+          routeKind: RouteKind.EXPERIMENT,
+          partialState: {metrics: {pinnedCards: []}},
+        })
+      );
     });
 
     function provideCardFetchInfo(

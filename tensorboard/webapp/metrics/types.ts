@@ -63,13 +63,14 @@ export type CardIdWithMetadata = CardMetadata & {
  * against an existing card with the same metadata.
  */
 export interface CardUniqueInfo {
+  plugin: string;
   tag: string;
   runId?: string;
   sample?: number;
 }
 
 /**
- * The state after deserializing a URL for hydration.
+ * The metrics-related state created by deserializing a URL.
  */
 export interface URLDeserializedState {
   metrics: {

@@ -28,6 +28,8 @@ export const metricsTagMetadataRequested = createAction(
   '[Metrics] Metrics Tag Metadata Requested'
 );
 
+// Effects guarantee that tag metadata only loads after the initial
+// stateRehydratedFromUrl action from AppRouting.
 export const metricsTagMetadataLoaded = createAction(
   '[Metrics] Metrics Tag Metadata Loaded',
   props<{tagMetadata: TagMetadata}>()

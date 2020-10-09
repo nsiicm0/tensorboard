@@ -24,6 +24,7 @@ import {
   filter,
   map,
   mergeMap,
+  shareReplay,
   switchMap,
   take,
   tap,
@@ -116,6 +117,11 @@ export class MetricsEffects implements OnInitEffects {
     })
   );
 
+  private readonly stateRehydratedFromUrl$ = this.actions$.pipe(
+    ofType(routingActions.stateRehydratedFromUrl),
+    shareReplay(1)
+  );
+
   private readonly loadTagMetadata$ = merge(
     this.dashboardShownWithoutData$,
     this.reloadRequestedWhileShown$
@@ -136,7 +142,9 @@ export class MetricsEffects implements OnInitEffects {
     }),
     switchMap(([, , experimentIds]) => {
       return this.dataSource.fetchTagMetadata(experimentIds!).pipe(
-        tap((tagMetadata: TagMetadata) => {
+        // Wait for the initial URL rehydration to import unresolved pins.
+        withLatestFrom(this.stateRehydratedFromUrl$),
+        tap(([tagMetadata]) => {
           this.store.dispatch(actions.metricsTagMetadataLoaded({tagMetadata}));
         }),
         catchError(() => {
@@ -280,7 +288,9 @@ export class MetricsEffects implements OnInitEffects {
         /**
          * Subscribes to: card visibility, reloads.
          */
-        this.loadTimeSeries$
+        this.loadTimeSeries$,
+
+        this.stateRehydratedFromUrl$
       );
     },
     {dispatch: false}

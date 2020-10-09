@@ -38,13 +38,13 @@ import {
   CardUniqueInfo,
   CardMetadata,
   HistogramMode,
-  NonPinnedCardId,
   TooltipSort,
   URLDeserializedState,
   XAxisType,
 } from '../types';
 
 import {
+  addPinnedCopyToState,
   createPluginDataWithLoadable,
   createRunToLoadState,
   getCardId,
@@ -203,9 +203,10 @@ function buildResetLoadable(loadable: TimeSeriesLoadable) {
 function cardMatchesCardUniqueInfo(
   cardMetadata: CardMetadata,
   cardUniqueInfo: CardUniqueInfo
-) {
+): boolean {
   const noRunId = !cardMetadata.runId && !cardUniqueInfo.runId;
   return (
+    cardMetadata.plugin === cardUniqueInfo.plugin &&
     cardMetadata.tag === cardUniqueInfo.tag &&
     cardMetadata.sample === cardUniqueInfo.sample &&
     (cardMetadata.runId === cardUniqueInfo.runId || noRunId)
@@ -216,46 +217,13 @@ function cardMatchesCardUniqueInfo(
  * Returns an identifier useful for comparing a card in storage with a real card
  * with loaded metadata.
  */
-function hashCardUniqueInfo(
+function serializeCardUniqueInfo(
+  plugin: string,
   tag: string,
   runId?: string | null,
   sample?: number
-) {
-  return JSON.stringify([tag, runId || '', sample]);
-}
-
-/**
- * Impure helper to modify the state by creating a new pinned copy of the
- * provided card. May throw if the card provided has no metadata.
- */
-function addPinnedCopyToState(
-  cardId: NonPinnedCardId,
-  nextCardToPinnedCopy: CardToPinnedCard,
-  nextPinnedCardToOriginal: PinnedCardToCard,
-  nextCardStepIndexMap: CardStepIndexMap,
-  nextCardMetadataMap: CardMetadataMap
-) {
-  // No-op if the card is a pinned copy, or if it already has a pinned copy.
-  if (
-    nextPinnedCardToOriginal.has(cardId) ||
-    nextCardToPinnedCopy.has(cardId)
-  ) {
-    return;
-  }
-
-  // Create a pinned copy. Copies step index from the original card.
-  const pinnedCardId = getPinnedCardId(cardId);
-  nextCardToPinnedCopy.set(cardId, pinnedCardId);
-  nextPinnedCardToOriginal.set(pinnedCardId, cardId);
-  if (nextCardStepIndexMap.hasOwnProperty(cardId)) {
-    nextCardStepIndexMap[pinnedCardId] = nextCardStepIndexMap[cardId];
-  }
-
-  const metadata = nextCardMetadataMap[cardId];
-  if (!metadata) {
-    throw new Error('Cannot pin a card without metadata');
-  }
-  nextCardMetadataMap[pinnedCardId] = metadata;
+): string {
+  return JSON.stringify([plugin, tag, runId || '', sample]);
 }
 
 const {initialState, reducers: routeContextReducer} = createRouteContextedState(
@@ -322,8 +290,6 @@ const {initialState, reducers: routeContextReducer} = createRouteContextedState(
 
 const reducer = createReducer(
   initialState,
-  // This hydration action is dispatched on any in-app navigation.
-  // switching plugin dashboards will trigger this, which clears things
   on(stateRehydratedFromUrl, (state, {routeKind, partialState}) => {
     if (
       routeKind !== RouteKind.EXPERIMENT &&
@@ -331,23 +297,34 @@ const reducer = createReducer(
     ) {
       return state;
     }
-    // The URL serializes pinned cards + pre-pinned cards. Keep these sets
-    // mutually exclusive, and do not add duplicate pre-pinned cards.
-    const seenHashes = new Set();
+    // The URL contains pinned cards + unresolved imported pins. Keep these sets
+    // mutually exclusive, and do not add duplicate any unresolved imported
+    // cards.
+    const serializedCardUniqueInfos = new Set();
+
+    // Visit existing pins.
     for (const pinnedCardId of state.pinnedCardToOriginal.keys()) {
-      const {tag, runId, sample} = state.cardMetadataMap[pinnedCardId];
-      seenHashes.add(hashCardUniqueInfo(tag, runId, sample));
+      const {plugin, tag, runId, sample} = state.cardMetadataMap[pinnedCardId];
+      serializedCardUniqueInfos.add(
+        serializeCardUniqueInfo(plugin, tag, runId, sample)
+      );
     }
 
+    // Add unique deserialized pins to the unresolved set.
     const hydratedState = partialState as URLDeserializedState;
     const nextUnresolvedImportedPinnedCards = [] as CardUniqueInfo[];
     for (const card of [
       ...state.unresolvedImportedPinnedCards,
       ...hydratedState.metrics.pinnedCards,
     ]) {
-      const hash = hashCardUniqueInfo(card.tag, card.runId, card.sample);
-      if (!seenHashes.has(hash)) {
-        seenHashes.add(hash);
+      const cardUniqueInfoString = serializeCardUniqueInfo(
+        card.plugin,
+        card.tag,
+        card.runId,
+        card.sample
+      );
+      if (!serializedCardUniqueInfos.has(cardUniqueInfoString)) {
+        serializedCardUniqueInfos.add(cardUniqueInfoString);
         nextUnresolvedImportedPinnedCards.push(card);
       }
     }

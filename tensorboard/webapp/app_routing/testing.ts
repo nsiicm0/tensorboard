@@ -16,7 +16,7 @@ import {Injectable, Provider} from '@angular/core';
 
 import {of} from 'rxjs';
 
-import {navigated} from './actions';
+import {navigated, stateRehydratedFromUrl} from './actions';
 import {Location} from './location';
 import {Route, RouteKind} from './types';
 

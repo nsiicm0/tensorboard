@@ -15,12 +15,14 @@ limitations under the License.
 import {DataLoadState} from '../../types/data';
 
 import {PluginType} from '../data_source';
-import {buildTagMetadata} from '../testing';
+import {buildTagMetadata, createCardMetadata} from '../testing';
 
 import {
+  addPinnedCopyToState,
   createPluginDataWithLoadable,
   createRunToLoadState,
   getCardId,
+  getPinnedCardId,
   getRunIds,
   getTimeSeriesLoadable,
 } from './metrics_store_internal_utils';
@@ -341,6 +343,66 @@ describe('metrics store utils', () => {
           4 /* sample */
         )
       ).toEqual(['run1', 'run3']);
+    });
+  });
+
+  describe('addPinnedCopyToState', () => {
+    it('adds a pinned copy properly', () => {
+      const cardToPinnedCopy = new Map();
+      const pinnedCardToOriginal = new Map();
+      const cardStepIndexMap = {card1: 2};
+      const cardMetadataMap = {card1: createCardMetadata()};
+      addPinnedCopyToState(
+        'card1',
+        cardToPinnedCopy,
+        pinnedCardToOriginal,
+        cardStepIndexMap,
+        cardMetadataMap
+      );
+      const pinnedCardId = getPinnedCardId('card1');
+
+      expect(cardToPinnedCopy).toEqual(new Map([['card1', pinnedCardId]]));
+      expect(pinnedCardToOriginal).toEqual(new Map([[pinnedCardId, 'card1']]));
+      expect(cardStepIndexMap).toEqual({
+        card1: 2,
+        [pinnedCardId]: 2,
+      });
+      expect(cardMetadataMap).toEqual({
+        card1: createCardMetadata(),
+        [pinnedCardId]: createCardMetadata(),
+      });
+    });
+
+    it('throws if the original card does not have metadata', () => {
+      expect(() => {
+        addPinnedCopyToState('card1', new Map(), new Map(), {}, {});
+      }).toThrow();
+    });
+
+    it('no-ops if the card already has a pinned copy', () => {
+      const cardToPinnedCopy = new Map([['card1', 'card-pin1']]);
+      const pinnedCardToOriginal = new Map([['card-pin1', 'card1']]);
+      const cardStepIndexMap = {};
+      const cardMetadataMap = {card1: createCardMetadata()};
+      const originals = {
+        cardToPinnedCopy: new Map(cardToPinnedCopy),
+        pinnedCardToOriginal: new Map(pinnedCardToOriginal),
+        cardStepIndexMap: {...cardStepIndexMap},
+        cardMetadataMap: {...cardMetadataMap},
+      };
+
+      addPinnedCopyToState(
+        'card1',
+        cardToPinnedCopy,
+        pinnedCardToOriginal,
+        cardStepIndexMap,
+        cardMetadataMap
+      );
+
+      expect(cardToPinnedCopy).toEqual(originals.cardToPinnedCopy);
+      expect(pinnedCardToOriginal).toEqual(originals.pinnedCardToOriginal);
+      expect(cardStepIndexMap).toEqual(originals.cardStepIndexMap);
+      expect(cardMetadataMap).toEqual(originals.cardMetadataMap);
     });
   });
 });
